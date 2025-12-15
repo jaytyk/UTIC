@@ -3,52 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>도로 CCTV 멀티 뷰어</title>
-    <style>
-        /* 기본 스타일 및 레이아웃 */
-        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
-        header { background-color: #333; color: white; padding: 15px 20px; text-align: center; }
-        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
-        .controls { background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .control-group { margin-bottom: 10px; }
-        .control-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+    <title>경로 기반 UTIC CCTV 뷰어</title>
+    
+    <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_APP_KEY_HERE&libraries=services,drawing"></script>
 
-        /* CCTV 뷰어 레이아웃 */
-        #cctv-viewer { display: flex; flex-wrap: wrap; gap: 10px; }
-        .cctv-item { background-color: #000; position: relative; overflow: hidden; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; background-color: #f4f4f4; }
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; display: flex; gap: 20px; }
+        h1 { text-align: center; color: #333; }
+        
+        /* 좌측 제어판 영역 */
+        .sidebar { width: 350px; flex-shrink: 0; background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .input-group input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+        #search-button { width: 100%; padding: 10px; background-color: #ffcd00; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        #search-button:hover { background-color: #e6b800; }
+        #map-area { margin-top: 20px; height: 300px; border: 1px solid #ccc; border-radius: 4px; }
+        #cctv-count { font-weight: bold; margin-top: 10px; }
+
+        /* 우측 뷰어 영역 */
+        .viewer-area { flex-grow: 1; }
+        #cctv-viewer { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .cctv-item { background-color: #000; position: relative; overflow: hidden; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); min-height: 200px; }
         .cctv-item iframe { width: 100%; height: 100%; border: none; }
         .cctv-title { position: absolute; top: 5px; left: 5px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 2px 5px; border-radius: 3px; font-size: 12px; }
 
-        /* 가로 개수에 따른 크기 조정 (CSS Grid를 사용하면 더 유연하나, flex로 간단히 구현) */
+        /* 가로 2~4개 레이아웃 */
         .cols-2 .cctv-item { width: calc(50% - 5px); }
-        .cols-3 .cctv-item { width: calc(33.333% - 7px); } /* 3개 항목, 10px gap 고려 */
-        .cols-4 .cctv-item { width: calc(25% - 8px); } /* 4개 항목, 10px gap 고려 */
-
-        /* 높이는 비율 유지를 위해 JavaScript로 설정할 수 있으나, 여기서는 고정 값 */
-        .cctv-item { min-height: 250px; }
-
-        /* 설정 목록 스타일 */
-        #cctv-list-container { display: flex; flex-direction: column; gap: 5px; border: 1px solid #ddd; padding: 10px; border-radius: 4px; background-color: #fff; }
-        .cctv-setting-item { display: flex; align-items: center; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee; background-color: #f9f9f9; cursor: move; /* 드래그 가능 시각적 힌트 */ }
-        .cctv-setting-item:last-child { border-bottom: none; }
-        .cctv-setting-item span { flex-grow: 1; }
-        .cctv-setting-item button { margin-left: 10px; padding: 3px 8px; cursor: pointer; }
-
-        /* 드래그 앤 드롭을 위한 클래스 (Draggabilly 라이브러리 대신 순수 JS를 사용한다고 가정) */
+        .cols-3 .cctv-item { width: calc(33.333% - 7px); }
+        .cols-4 .cctv-item { width: calc(25% - 8px); }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>도로 CCTV 멀티 뷰어 (GitHub Pages)</h1>
+        <h1>경로 기반 UTIC CCTV 뷰어</h1>
     </header>
 
     <div class="container">
-        <div class="controls">
-            <h2>뷰어 설정</h2>
+        <div class="sidebar">
+            <h2>경로 검색</h2>
+
+            <div class="input-group">
+                <label for="start-point">출발지 (예: 서울역):</label>
+                <input type="text" id="start-point" value="서울역">
+            </div>
+
+            <div class="input-group">
+                <label for="end-point">도착지 (예: 부산역):</label>
+                <input type="text" id="end-point" value="부산역">
+            </div>
             
-            <div class="control-group">
-                <label for="column-count">화면 가로 배열 개수 선택:</label>
+            <div class="input-group">
+                <label for="column-count">화면 가로 배열 개수:</label>
                 <select id="column-count">
                     <option value="2">2개</option>
                     <option value="3" selected>3개</option>
@@ -56,65 +64,214 @@
                 </select>
             </div>
 
-            <div class="control-group">
-                <label>표시할 CCTV 순서 (클릭하여 추가/제거, 드래그하여 순서 변경):</label>
-                <div id="cctv-list-container">
-                    </div>
-            </div>
+            <button id="search-button" onclick="findRouteAndCCTVs()">경로 검색 및 CCTV 조회</button>
 
-            <button onclick="applySettings()">설정 적용</button>
+            <div id="map-area"></div>
+            <p id="cctv-count"></p>
         </div>
-        
-        <div id="cctv-viewer" class="cols-3">
-            </div>
 
+        <div class="viewer-area">
+            <h2>경로 CCTV 화면</h2>
+            <div id="cctv-viewer" class="cols-3">
+                <p>출발지와 도착지를 입력하고 '경로 검색 및 CCTV 조회' 버튼을 눌러주세요.</p>
+                </div>
+        </div>
     </div>
 
     <script>
-        // 초기 CCTV 데이터 (UTIC 형식)
-        // 실제 운영 시에는 이 목록을 실제 운영하는 CCTV 목록으로 채워야 합니다.
-        // 예를 들어, '직동IC'처럼 사용자가 인식할 수 있는 이름과 URL 파라미터를 연결합니다.
-        const ALL_CCTVS = [
-            { 
-                id: 'L903134', 
-                name: '직동IC', 
-                params: 'cctvid=L903134&cctvname=%25EC%25A7%81%25EB%258F%2599IC&kind=EE&cctvip=60114&cctvch=undefined&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=127.09624099508918&minY=37.363136888364586&maxX=127.30318308497776&maxY=37.456634944990036' 
-            },
-            { 
-                id: 'A001001', 
-                name: '경부선_서울TG', 
-                params: 'cctvid=A001001&cctvname=%EA%B2%BD%EB%B6%80%EC%84%A0_%EC%84%9C%EC%9A%B8TG&kind=EE&cctvip=19102&cctvch=undefined&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=127.02619076849924&minY=37.36371549429541&maxX=127.04279768598428&maxY=37.382878959648946' 
-            },
-            { 
-                id: 'A002002', 
-                name: '영동선_강릉IC', 
-                params: 'cctvid=A002002&cctvname=%EC%98%81%EB%8F%99%EC%84%A0_%EA%B0%95%EB%A6%89IC&kind=EE&cctvip=10103&cctvch=undefined&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=128.8752250106676&minY=37.75549887713437&maxX=128.89183192815264&maxY=37.7746623424879' 
-            },
-            { 
-                id: 'A003003', 
-                name: '서해안선_서서울IC', 
-                params: 'cctvid=A003003&cctvname=%EC%84%9C%ED%95%B4%EC%95%88%EC%84%A0_%EC%84%9C%EC%84%9C%EC%9A%B8IC&kind=EE&cctvip=22104&cctvch=undefined&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=126.7915551912634&minY=37.43615939223847&maxX=126.80816210874845&maxY=37.455322857592' 
-            },
-            { 
-                id: 'A004004', 
-                name: '호남선_광주TG', 
-                params: 'cctvid=A004004&cctvname=%ED%98%B8%EB%82%A8%EC%84%A0_%EA%B4%91%EC%A3%BCTG&kind=EE&cctvip=30105&cctvch=undefined&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=126.83984620579913&minY=35.155702758178875&maxX=126.85645312328417&maxY=35.17486622353241' 
-            }
-            // 필요한 만큼 CCTV 목록을 추가하세요.
-        ];
-
-        // 서비스에서 현재 보여줄 CCTV 목록 (기본값 설정)
-        let selectedCCTVs = [ALL_CCTVS[0], ALL_CCTVS[1], ALL_CCTVS[2]];
+        // 발급받은 UTIC API 키를 여기에 입력하세요.
+        const UTIC_API_KEY = "YOUR_UTIC_API_KEY_HERE"; 
         
-        // UTIC 기본 URL
-        const BASE_URL = 'https://www.utic.go.kr/jsp/map/cctvStream.jsp?';
+        // UTIC CCTV 스트림 기본 URL
+        const UTIC_BASE_STREAM_URL = 'https://www.utic.go.kr/jsp/map/cctvStream.jsp?';
 
-        // --- 초기화 및 렌더링 함수 ---
+        // 카카오 지도 초기화
+        let map = null;
+        let routePolyline = null;
+        let markerStart = null;
+        let markerEnd = null;
+        const mapContainer = document.getElementById('map-area');
+        
+        // 카카오 서비스 객체
+        const ps = new kakao.maps.services.Places(); // 장소 검색 서비스
+        const rs = new kakao.maps.services.RoadviewService(); // (경로 검색에 필요하지는 않지만 확장 가능)
 
         /**
-         * 선택된 CCTV 목록을 기반으로 뷰어를 렌더링합니다.
+         * 맵 초기화 함수
          */
-        function renderCCTVViewer() {
+        function initMap() {
+            const defaultCenter = new kakao.maps.LatLng(36.5, 127.5); // 대한민국 중심 좌표
+            const mapOption = {
+                center: defaultCenter, 
+                level: 13 
+            };
+            map = new kakao.maps.Map(mapContainer, mapOption);
+        }
+        
+        // 페이지 로드 시 맵 초기화
+        kakao.maps.load(() => {
+            initMap();
+        });
+
+        // --- 메인 흐름 함수 ---
+
+        /**
+         * 1. 출발지/도착지 좌표를 검색합니다.
+         * 2. 경로를 검색합니다.
+         * 3. 경로상의 CCTV를 UTIC API로 조회합니다.
+         * 4. 뷰어에 CCTV 화면을 표시합니다.
+         */
+        async function findRouteAndCCTVs() {
+            const startName = document.getElementById('start-point').value;
+            const endName = document.getElementById('end-point').value;
+            const searchButton = document.getElementById('search-button');
+            
+            searchButton.disabled = true;
+            searchButton.textContent = '경로 검색 중...';
+            document.getElementById('cctv-viewer').innerHTML = '<p>경로 검색 및 CCTV 정보를 로딩 중입니다...</p>';
+
+            try {
+                // 1. 출발지/도착지 좌표 획득
+                const startCoords = await getCoordsByName(startName);
+                const endCoords = await getCoordsByName(endName);
+                
+                if (!startCoords || !endCoords) {
+                    alert('출발지 또는 도착지 위치를 찾을 수 없습니다.');
+                    return;
+                }
+
+                // 2. 카카오 길 찾기 API를 사용하여 경로 획득 (여기서는 프론트엔드에서 구현 가능한 '경로 그리기'만 사용)
+                // 카카오맵 API는 직접 길 찾기 결과를 JSON으로 반환하는 기능이 프론트엔드용 SDK에 제공되지 않아,
+                // **실제 길 찾기 API (REST API)를 사용하거나, UTIC의 경로 검색 API를 사용**해야 합니다.
+                // **GitHub Pages 환경에서는 REST API 호출이 CORS 문제나 API 키 보안 문제로 복잡**하므로,
+                // **여기서는 '출발지/도착지 사이의 직진 경로' 주변을 조회하는 방식으로 대체**합니다.
+                
+                // 실제 구현 시: 
+                // 1. 카카오맵 REST API (길 찾기)를 서버에서 호출하거나
+                // 2. UTIC에서 제공하는 경로 기반 CCTV 조회 API (UTIC API 사용을 명시하셨기에)를 사용해야 합니다.
+
+                // **[임시] UTIC API를 사용하여 경로 상의 CCTV 조회**
+                // UTIC API 명세에 따라 적절한 파라미터를 구성해야 합니다. (여기서는 가상의 URL 사용)
+                
+                // UTIC API는 일반적으로 REST 방식으로 CCTV 목록을 제공합니다.
+                const uticCctvApiUrl = `https://openapi.utic.go.kr/api/getRouteCctvList?key=${UTIC_API_KEY}&startLat=${startCoords.y}&startLon=${startCoords.x}&endLat=${endCoords.y}&endLon=${endCoords.x}`;
+                
+                // CORS 문제 발생 가능성이 높습니다.
+                const response = await fetch(uticCctvApiUrl);
+                
+                if (!response.ok) {
+                    throw new Error("UTIC API 호출 실패 (CORS 또는 API 키 문제일 수 있음)");
+                }
+                
+                const data = await response.json();
+                
+                // 3. UTIC API 결과에서 CCTV 목록 추출 (UTIC API 응답 형식에 맞게 수정 필요)
+                // 아래는 UTIC API가 [cctvList]라는 배열을 반환한다고 가정한 형식입니다.
+                const cctvList = data.cctvList || []; 
+
+                // 4. 지도에 경로와 마커 표시
+                drawMapRoute(startCoords, endCoords, cctvList);
+                
+                // 5. CCTV 뷰어 렌더링
+                renderCCTVViewer(cctvList);
+
+            } catch (error) {
+                console.error("서비스 처리 중 오류 발생:", error);
+                document.getElementById('cctv-viewer').innerHTML = `<p style="color: red;">오류 발생: ${error.message}. API 키 확인 또는 브라우저 콘솔을 확인하세요. (CORS 문제일 가능성이 높습니다)</p>`;
+            } finally {
+                searchButton.disabled = false;
+                searchButton.textContent = '경로 검색 및 CCTV 조회';
+            }
+        }
+
+        /**
+         * 장소 이름으로 좌표 (WGS84, Lat/Lon)를 검색합니다.
+         */
+        function getCoordsByName(name) {
+            return new Promise((resolve, reject) => {
+                ps.keywordSearch(name, (data, status, pagination) => {
+                    if (status === kakao.maps.services.Status.OK) {
+                        // 첫 번째 결과 사용
+                        const coords = {
+                            x: data[0].x, // 경도 (Longitude)
+                            y: data[0].y  // 위도 (Latitude)
+                        };
+                        resolve(coords);
+                    } else {
+                        resolve(null); // 찾지 못함
+                    }
+                });
+            });
+        }
+        
+        /**
+         * 카카오맵에 출발지/도착지 마커와 경로를 표시합니다.
+         */
+        function drawMapRoute(startCoords, endCoords, cctvList) {
+            // 기존 마커 및 경로 제거
+            if (routePolyline) routePolyline.setMap(null);
+            if (markerStart) markerStart.setMap(null);
+            if (markerEnd) markerEnd.setMap(null);
+            
+            // 지도 중심 및 레벨 조정
+            const bounds = new kakao.maps.LatLngBounds();
+            const startPos = new kakao.maps.LatLng(startCoords.y, startCoords.x);
+            const endPos = new kakao.maps.LatLng(endCoords.y, endCoords.x);
+            bounds.extend(startPos);
+            bounds.extend(endPos);
+            
+            map.setBounds(bounds);
+            
+            // 마커 표시
+            markerStart = new kakao.maps.Marker({ position: startPos, map: map, title: '출발지' });
+            markerEnd = new kakao.maps.Marker({ position: endPos, map: map, title: '도착지' });
+
+            // [임시] 출발지/도착지 사이의 직선 경로 표시
+            routePolyline = new kakao.maps.Polyline({
+                path: [startPos, endPos],
+                strokeWeight: 5,
+                strokeColor: '#FF0000',
+                strokeOpacity: 0.7,
+                strokeStyle: 'solid'
+            });
+            routePolyline.setMap(map);
+            
+            // CCTV 마커 표시 (cctvList의 좌표 형식에 맞게 수정 필요)
+            cctvList.forEach(cctv => {
+                 // cctv.lat, cctv.lon 이 있다고 가정
+                 if (cctv.lat && cctv.lon) {
+                    const cctvPos = new kakao.maps.LatLng(cctv.lat, cctv.lon);
+                    const cctvMarker = new kakao.maps.Marker({ 
+                        position: cctvPos, 
+                        map: map, 
+                        title: cctv.cctvname || 'CCTV',
+                        // 빨간색 마커 아이콘 사용 (선택 사항)
+                        image: new kakao.maps.MarkerImage(
+                            'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png',
+                            new kakao.maps.Size(24, 35),
+                            { offset: new kakao.maps.Point(12, 35) }
+                        )
+                    });
+                    
+                    // 마커 클릭 시 해당 CCTV가 화면에 보이면 강조 또는 이동
+                    kakao.maps.event.addListener(cctvMarker, 'click', function() {
+                        const targetElement = document.getElementById(`cctv-${cctv.cctvid}`);
+                        if (targetElement) {
+                            targetElement.scrollIntoView({ behavior: 'smooth' });
+                            targetElement.style.border = '3px solid red'; // 잠시 강조
+                            setTimeout(() => targetElement.style.border = 'none', 1500);
+                        }
+                    });
+                 }
+            });
+
+            document.getElementById('cctv-count').textContent = `경로 주변 CCTV: ${cctvList.length}개 발견`;
+        }
+
+        /**
+         * CCTV 목록을 기반으로 뷰어를 렌더링합니다.
+         */
+        function renderCCTVViewer(cctvList) {
             const viewer = document.getElementById('cctv-viewer');
             const columnCount = document.getElementById('column-count').value;
             viewer.innerHTML = '';
@@ -122,21 +279,32 @@
             // 컬럼 개수 클래스 업데이트
             viewer.className = `cols-${columnCount}`;
 
-            selectedCCTVs.forEach(cctv => {
-                const fullUrl = BASE_URL + cctv.params;
+            if (cctvList.length === 0) {
+                 viewer.innerHTML = '<p>경로 주변에서 CCTV를 찾지 못했습니다.</p>';
+                 return;
+            }
+
+            cctvList.forEach(cctv => {
+                // UTIC API 응답에서 필요한 파라미터를 추출하여 기존 URL 형식에 맞게 재구성해야 합니다.
+                // UTIC API의 응답 필드를 확인하여 cctvid, cctvname, kind, cctvip, minX, minY 등을 추출해야 합니다.
+                
+                // 예시: API 응답 객체가 아래와 같은 필드를 가진다고 가정
+                const params = `cctvid=${cctv.cctvid}&cctvname=${encodeURIComponent(cctv.cctvname)}&kind=${cctv.kind || 'EE'}&cctvip=${cctv.cctvip}&cctvch=${cctv.cctvch || 'undefined'}&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=${cctv.minX || ''}&minY=${cctv.minY || ''}&maxX=${cctv.maxX || ''}&maxY=${cctv.maxY || ''}`;
+                const fullUrl = UTIC_BASE_STREAM_URL + params;
 
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'cctv-item';
+                itemDiv.id = `cctv-${cctv.cctvid}`; // 마커 클릭 시 스크롤을 위한 ID 부여
 
                 // 제목 표시
                 const titleSpan = document.createElement('span');
                 titleSpan.className = 'cctv-title';
-                titleSpan.textContent = cctv.name;
+                titleSpan.textContent = cctv.cctvname;
 
                 // iframe으로 CCTV 스트림 삽입
                 const iframe = document.createElement('iframe');
                 iframe.src = fullUrl;
-                iframe.setAttribute('loading', 'lazy'); // 성능 향상을 위해 lazy loading 적용
+                iframe.setAttribute('loading', 'lazy'); 
                 iframe.setAttribute('allow', 'autoplay');
 
                 itemDiv.appendChild(iframe);
@@ -145,166 +313,17 @@
             });
         }
         
-        /**
-         * 설정창의 CCTV 목록을 렌더링합니다.
-         */
-        function renderCCTVList() {
-            const container = document.getElementById('cctv-list-container');
-            container.innerHTML = '';
-
-            // 표시할 CCTV (순서 변경 가능, 배경색 강조)
-            selectedCCTVs.forEach(cctv => {
-                const itemDiv = createCCTVListItem(cctv, true);
-                container.appendChild(itemDiv);
-            });
-            
-            // 구분선
-            const hr = document.createElement('hr');
-            hr.style.margin = '10px 0';
-            container.appendChild(hr);
-            
-            // 추가 가능한 CCTV (클릭 시 추가)
-            ALL_CCTVS
-                .filter(cctv => !selectedCCTVs.find(s => s.id === cctv.id))
-                .forEach(cctv => {
-                    const itemDiv = createCCTVListItem(cctv, false);
-                    container.appendChild(itemDiv);
-                });
-            
-            // 드래그 앤 드롭 기능 활성화 (선택된 목록에만)
-            makeListDraggable();
-        }
-
-        /**
-         * CCTV 설정 목록 항목을 생성합니다.
-         * @param {object} cctv - CCTV 객체
-         * @param {boolean} isSelected - 현재 선택된 목록인지 여부 (제거 또는 추가 버튼 표시)
-         */
-        function createCCTVListItem(cctv, isSelected) {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'cctv-setting-item';
-            itemDiv.setAttribute('data-cctv-id', cctv.id);
-            itemDiv.setAttribute('data-is-selected', isSelected);
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = cctv.name;
-            itemDiv.appendChild(nameSpan);
-
-            const button = document.createElement('button');
-            button.textContent = isSelected ? '제거' : '추가';
-            button.onclick = () => isSelected ? removeCCTV(cctv.id) : addCCTV(cctv.id);
-            itemDiv.appendChild(button);
-
-            if (isSelected) {
-                // 선택된 항목에 드래그 아이콘/핸들 추가 (선택 사항)
-                const dragHandle = document.createElement('span');
-                dragHandle.textContent = '☰'; // 햄버거 메뉴 아이콘을 드래그 핸들로 사용
-                dragHandle.style.cursor = 'grab';
-                dragHandle.style.marginRight = '10px';
-                itemDiv.prepend(dragHandle);
-                itemDiv.classList.add('draggable');
-            }
-
-            return itemDiv;
-        }
-
-        /**
-         * 설정 적용 버튼 클릭 시 호출됩니다.
-         */
-        function applySettings() {
-            // 목록 순서는 드래그 앤 드롭에서 이미 selectedCCTVs에 반영되었다고 가정
-            // 뷰어만 다시 렌더링합니다.
-            renderCCTVViewer();
-            alert('설정이 적용되었습니다.');
-        }
-
-        // --- 목록 조작 함수 ---
-
-        function addCCTV(id) {
-            const cctvToAdd = ALL_CCTVS.find(c => c.id === id);
-            if (cctvToAdd && !selectedCCTVs.find(c => c.id === id)) {
-                selectedCCTVs.push(cctvToAdd);
-                renderCCTVList(); // 목록 새로고침
-                applySettings();  // 뷰어에 바로 적용
-            }
-        }
-
-        function removeCCTV(id) {
-            selectedCCTVs = selectedCCTVs.filter(c => c.id !== id);
-            renderCCTVList(); // 목록 새로고침
-            applySettings();  // 뷰어에 바로 적용
-        }
-
-        // --- 드래그 앤 드롭 (순서 변경) 기능 ---
-        
-        let dragSrcEl = null;
-
-        function handleDragStart(e) {
-            this.style.opacity = '0.4';
-            dragSrcEl = this;
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/html', this.outerHTML);
-        }
-
-        function handleDragOver(e) {
-            if (e.preventDefault) {
-                e.preventDefault(); // 드롭 허용
-            }
-            e.dataTransfer.dropEffect = 'move';
-            return false;
-        }
-
-        function handleDrop(e) {
-            if (e.stopPropagation) {
-                e.stopPropagation(); // 일부 브라우저에서 리디렉션 방지
-            }
-
-            if (dragSrcEl !== this) {
-                // 현재 순서 배열을 업데이트
-                const sourceId = dragSrcEl.getAttribute('data-cctv-id');
-                const targetId = this.getAttribute('data-cctv-id');
-                
-                const sourceIndex = selectedCCTVs.findIndex(c => c.id === sourceId);
-                const targetIndex = selectedCCTVs.findIndex(c => c.id === targetId);
-
-                // 배열에서 항목 이동
-                const [movedItem] = selectedCCTVs.splice(sourceIndex, 1);
-                selectedCCTVs.splice(targetIndex, 0, movedItem);
-                
-                renderCCTVList(); // 드롭 후 목록 재렌더링
-            }
-
-            return false;
-        }
-        
-        function handleDragEnd(e) {
-            // 드래그가 끝날 때 투명도 복원
-            this.style.opacity = '1'; 
-        }
-
-        function makeListDraggable() {
-            const items = document.querySelectorAll('#cctv-list-container .draggable');
-            items.forEach(item => {
-                // 이미 이벤트 리스너가 추가되어 있을 수 있으므로 이전 리스너는 제거하지 않고 새로 추가합니다.
-                // (일반적인 경우라면 이벤트 리스너 제거가 필요하지만, 재렌더링 시 DOM이 모두 교체되므로 상관없습니다.)
-                item.setAttribute('draggable', true);
-                item.addEventListener('dragstart', handleDragStart, false);
-                item.addEventListener('dragover', handleDragOver, false);
-                item.addEventListener('drop', handleDrop, false);
-                item.addEventListener('dragend', handleDragEnd, false);
-            });
-        }
-
-        // --- 서비스 시작 ---
-        
-        // 페이지 로드 시 초기 뷰 렌더링 및 설정 목록 렌더링
-        document.addEventListener('DOMContentLoaded', () => {
-            renderCCTVList(); // 설정 목록 (드래그/추가/제거) 초기화
-            renderCCTVViewer(); // CCTV 뷰어 초기화
-            
-            // 컬럼 개수 변경 시 바로 뷰어 업데이트
-            document.getElementById('column-count').addEventListener('change', renderCCTVViewer);
+        // 컬럼 개수 변경 이벤트 리스너
+        document.getElementById('column-count').addEventListener('change', () => {
+             // 뷰어가 이미 로드된 상태에서만 렌더링을 다시 합니다.
+             const viewer = document.getElementById('cctv-viewer');
+             if (viewer.children.length > 1) { // 로딩 메시지 이상이 있다면
+                const currentClass = viewer.className.match(/cols-\d/)[0];
+                viewer.classList.remove(currentClass);
+                viewer.classList.add(`cols-${document.getElementById('column-count').value}`);
+             }
         });
+        
     </script>
 </body>
 </html>
