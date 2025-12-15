@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>경로 기반 UTIC CCTV 뷰어</title>
     
-    <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_APP_KEY_HERE&libraries=services,drawing"></script>
-
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; margin: 0; background-color: #f4f4f4; }
         .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; display: flex; gap: 20px; }
@@ -17,8 +15,16 @@
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
         .input-group input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+        
+        .api-input-section { margin-bottom: 20px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px; background-color: #fff8e1; }
+        .api-input-section input { margin-bottom: 5px; }
+        .api-input-section button { padding: 5px 10px; margin-top: 5px; background-color: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .api-input-section button:hover { background-color: #e68900; }
+
         #search-button { width: 100%; padding: 10px; background-color: #ffcd00; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
-        #search-button:hover { background-color: #e6b800; }
+        #search-button:hover:not(:disabled) { background-color: #e6b800; }
+        #search-button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
         #map-area { margin-top: 20px; height: 300px; border: 1px solid #ccc; border-radius: 4px; }
         #cctv-count { font-weight: bold; margin-top: 10px; }
 
@@ -43,6 +49,21 @@
 
     <div class="container">
         <div class="sidebar">
+            
+            <div class="api-input-section">
+                <h3>🔑 API 키 설정 (로컬 저장)</h3>
+                <div class="input-group">
+                    <label for="kakao-key-input">카카오맵 JavaScript API 키:</label>
+                    <input type="text" id="kakao-key-input" placeholder="키를 입력하세요">
+                </div>
+                <div class="input-group">
+                    <label for="utic-key-input">UTIC API 키:</label>
+                    <input type="text" id="utic-key-input" placeholder="키를 입력하세요">
+                </div>
+                <button onclick="saveApiKeys()">API 키 저장 및 서비스 로드</button>
+                <p style="font-size: 12px; margin-top: 5px;">* 키는 브라우저에 저장되며, 브라우저 종료 후에도 유지됩니다.</p>
+            </div>
+
             <h2>경로 검색</h2>
 
             <div class="input-group">
@@ -64,7 +85,7 @@
                 </select>
             </div>
 
-            <button id="search-button" onclick="findRouteAndCCTVs()">경로 검색 및 CCTV 조회</button>
+            <button id="search-button" onclick="findRouteAndCCTVs()" disabled>API 키를 먼저 입력/저장하세요</button>
 
             <div id="map-area"></div>
             <p id="cctv-count"></p>
@@ -73,55 +94,106 @@
         <div class="viewer-area">
             <h2>경로 CCTV 화면</h2>
             <div id="cctv-viewer" class="cols-3">
-                <p>출발지와 도착지를 입력하고 '경로 검색 및 CCTV 조회' 버튼을 눌러주세요.</p>
-                </div>
+                <p>API 키를 입력하고 'API 키 저장 및 서비스 로드' 버튼을 눌러주세요.</p>
+            </div>
         </div>
     </div>
 
     <script>
-        // 발급받은 UTIC API 키를 여기에 입력하세요.
-        const UTIC_API_KEY = "YOUR_UTIC_API_KEY_HERE"; 
-        
-        // UTIC CCTV 스트림 기본 URL
         const UTIC_BASE_STREAM_URL = 'https://www.utic.go.kr/jsp/map/cctvStream.jsp?';
+        const KAKAO_KEY_STORAGE_KEY = 'kakaoMapApiKey';
+        const UTIC_KEY_STORAGE_KEY = 'uticApiKey';
 
-        // 카카오 지도 초기화
+        let KAKAO_API_KEY = localStorage.getItem(KAKAO_KEY_STORAGE_KEY) || null;
+        let UTIC_API_KEY = localStorage.getItem(UTIC_KEY_STORAGE_KEY) || null;
+
+        // 카카오 지도 및 서비스 객체 (로드 후 초기화됨)
         let map = null;
+        let ps = null; // Places Service (장소 검색)
         let routePolyline = null;
         let markerStart = null;
         let markerEnd = null;
-        const mapContainer = document.getElementById('map-area');
-        
-        // 카카오 서비스 객체
-        const ps = new kakao.maps.services.Places(); // 장소 검색 서비스
-        const rs = new kakao.maps.services.RoadviewService(); // (경로 검색에 필요하지는 않지만 확장 가능)
 
         /**
-         * 맵 초기화 함수
+         * API 키 입력 필드를 로컬 저장소 값으로 채우고, 키가 있으면 서비스를 로드합니다.
          */
-        function initMap() {
-            const defaultCenter = new kakao.maps.LatLng(36.5, 127.5); // 대한민국 중심 좌표
-            const mapOption = {
-                center: defaultCenter, 
-                level: 13 
-            };
-            map = new kakao.maps.Map(mapContainer, mapOption);
+        function initializeApiInputs() {
+            document.getElementById('kakao-key-input').value = KAKAO_API_KEY || '';
+            document.getElementById('utic-key-input').value = UTIC_API_KEY || '';
+
+            if (KAKAO_API_KEY && UTIC_API_KEY) {
+                loadKakaoMapScript(KAKAO_API_KEY);
+            }
         }
         
-        // 페이지 로드 시 맵 초기화
-        kakao.maps.load(() => {
-            initMap();
-        });
+        /**
+         * API 키를 로컬 저장소에 저장하고 카카오맵 스크립트를 로드합니다.
+         */
+        function saveApiKeys() {
+            const kakaoKey = document.getElementById('kakao-key-input').value.trim();
+            const uticKey = document.getElementById('utic-key-input').value.trim();
 
-        // --- 메인 흐름 함수 ---
+            if (!kakaoKey || !uticKey) {
+                alert('카카오맵 API 키와 UTIC API 키를 모두 입력해야 합니다.');
+                return;
+            }
+
+            // 로컬 저장소에 저장
+            localStorage.setItem(KAKAO_KEY_STORAGE_KEY, kakaoKey);
+            localStorage.setItem(UTIC_KEY_STORAGE_KEY, uticKey);
+
+            KAKAO_API_KEY = kakaoKey;
+            UTIC_API_KEY = uticKey;
+            
+            alert('API 키가 저장되었고 서비스 로드를 시작합니다.');
+            loadKakaoMapScript(KAKAO_API_KEY);
+        }
 
         /**
-         * 1. 출발지/도착지 좌표를 검색합니다.
-         * 2. 경로를 검색합니다.
-         * 3. 경로상의 CCTV를 UTIC API로 조회합니다.
-         * 4. 뷰어에 CCTV 화면을 표시합니다.
+         * 카카오맵 JavaScript SDK를 동적으로 로드합니다.
          */
+        function loadKakaoMapScript(key) {
+            if (document.getElementById('kakao-map-script')) {
+                // 이미 로드되었거나 로드 중이면 재로드하지 않음 (단순히 서비스 활성화)
+                initializeServices();
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.id = 'kakao-map-script';
+            script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services`;
+            script.onload = () => {
+                kakao.maps.load(initializeServices);
+            };
+            document.head.appendChild(script);
+        }
+
+        /**
+         * 카카오 서비스 객체를 초기화하고 맵을 표시하며 검색 버튼을 활성화합니다.
+         */
+        function initializeServices() {
+            const mapContainer = document.getElementById('map-area');
+            const defaultCenter = new kakao.maps.LatLng(36.5, 127.5);
+            const mapOption = { center: defaultCenter, level: 13 };
+            
+            map = new kakao.maps.Map(mapContainer, mapOption);
+            ps = new kakao.maps.services.Places(); // 장소 검색 서비스 초기화
+
+            // 검색 버튼 활성화
+            document.getElementById('search-button').disabled = false;
+            document.getElementById('search-button').textContent = '경로 검색 및 CCTV 조회';
+            
+            document.getElementById('cctv-viewer').innerHTML = '<p>출발지/도착지를 입력하고 검색 버튼을 눌러주세요.</p>';
+        }
+
+        // --- 메인 흐름 함수 ---
+        
         async function findRouteAndCCTVs() {
+            if (!KAKAO_API_KEY || !UTIC_API_KEY) {
+                alert('API 키를 먼저 입력하고 저장해야 합니다.');
+                return;
+            }
+            
             const startName = document.getElementById('start-point').value;
             const endName = document.getElementById('end-point').value;
             const searchButton = document.getElementById('search-button');
@@ -131,42 +203,29 @@
             document.getElementById('cctv-viewer').innerHTML = '<p>경로 검색 및 CCTV 정보를 로딩 중입니다...</p>';
 
             try {
-                // 1. 출발지/도착지 좌표 획득
+                // 1. 출발지/도착지 좌표 획득 (카카오맵 API)
                 const startCoords = await getCoordsByName(startName);
                 const endCoords = await getCoordsByName(endName);
                 
                 if (!startCoords || !endCoords) {
-                    alert('출발지 또는 도착지 위치를 찾을 수 없습니다.');
-                    return;
+                    throw new Error('출발지 또는 도착지 위치를 찾을 수 없습니다.');
                 }
 
-                // 2. 카카오 길 찾기 API를 사용하여 경로 획득 (여기서는 프론트엔드에서 구현 가능한 '경로 그리기'만 사용)
-                // 카카오맵 API는 직접 길 찾기 결과를 JSON으로 반환하는 기능이 프론트엔드용 SDK에 제공되지 않아,
-                // **실제 길 찾기 API (REST API)를 사용하거나, UTIC의 경로 검색 API를 사용**해야 합니다.
-                // **GitHub Pages 환경에서는 REST API 호출이 CORS 문제나 API 키 보안 문제로 복잡**하므로,
-                // **여기서는 '출발지/도착지 사이의 직진 경로' 주변을 조회하는 방식으로 대체**합니다.
-                
-                // 실제 구현 시: 
-                // 1. 카카오맵 REST API (길 찾기)를 서버에서 호출하거나
-                // 2. UTIC에서 제공하는 경로 기반 CCTV 조회 API (UTIC API 사용을 명시하셨기에)를 사용해야 합니다.
-
-                // **[임시] UTIC API를 사용하여 경로 상의 CCTV 조회**
-                // UTIC API 명세에 따라 적절한 파라미터를 구성해야 합니다. (여기서는 가상의 URL 사용)
-                
-                // UTIC API는 일반적으로 REST 방식으로 CCTV 목록을 제공합니다.
+                // 2. UTIC API를 사용하여 경로 상의 CCTV 조회
+                // *** CORS 문제 발생 가능성 높음. 실제 사용 전 UTIC API CORS 허용 여부 확인 필수. ***
                 const uticCctvApiUrl = `https://openapi.utic.go.kr/api/getRouteCctvList?key=${UTIC_API_KEY}&startLat=${startCoords.y}&startLon=${startCoords.x}&endLat=${endCoords.y}&endLon=${endCoords.x}`;
                 
-                // CORS 문제 발생 가능성이 높습니다.
                 const response = await fetch(uticCctvApiUrl);
                 
                 if (!response.ok) {
-                    throw new Error("UTIC API 호출 실패 (CORS 또는 API 키 문제일 수 있음)");
+                    throw new Error(`UTIC API 호출 실패: 상태 코드 ${response.status}`);
                 }
                 
                 const data = await response.json();
                 
                 // 3. UTIC API 결과에서 CCTV 목록 추출 (UTIC API 응답 형식에 맞게 수정 필요)
-                // 아래는 UTIC API가 [cctvList]라는 배열을 반환한다고 가정한 형식입니다.
+                // 아래는 UTIC API가 'data.cctvList' 배열을 반환한다고 가정한 형식입니다.
+                // 실제 응답 구조를 확인하여 수정하세요.
                 const cctvList = data.cctvList || []; 
 
                 // 4. 지도에 경로와 마커 표시
@@ -177,7 +236,7 @@
 
             } catch (error) {
                 console.error("서비스 처리 중 오류 발생:", error);
-                document.getElementById('cctv-viewer').innerHTML = `<p style="color: red;">오류 발생: ${error.message}. API 키 확인 또는 브라우저 콘솔을 확인하세요. (CORS 문제일 가능성이 높습니다)</p>`;
+                document.getElementById('cctv-viewer').innerHTML = `<p style="color: red;">오류 발생: ${error.message}. API 키나 UTIC API 응답 형식을 확인하세요.</p>`;
             } finally {
                 searchButton.disabled = false;
                 searchButton.textContent = '경로 검색 및 CCTV 조회';
@@ -185,27 +244,22 @@
         }
 
         /**
-         * 장소 이름으로 좌표 (WGS84, Lat/Lon)를 검색합니다.
+         * 장소 이름으로 좌표 (WGS84, Lat/Lon)를 검색합니다. (카카오맵 서비스)
          */
         function getCoordsByName(name) {
             return new Promise((resolve, reject) => {
                 ps.keywordSearch(name, (data, status, pagination) => {
                     if (status === kakao.maps.services.Status.OK) {
-                        // 첫 번째 결과 사용
-                        const coords = {
-                            x: data[0].x, // 경도 (Longitude)
-                            y: data[0].y  // 위도 (Latitude)
-                        };
-                        resolve(coords);
+                        resolve({ x: data[0].x, y: data[0].y });
                     } else {
-                        resolve(null); // 찾지 못함
+                        resolve(null);
                     }
                 });
             });
         }
         
         /**
-         * 카카오맵에 출발지/도착지 마커와 경로를 표시합니다.
+         * 카카오맵에 경로 및 마커를 표시합니다.
          */
         function drawMapRoute(startCoords, endCoords, cctvList) {
             // 기존 마커 및 경로 제거
@@ -213,7 +267,9 @@
             if (markerStart) markerStart.setMap(null);
             if (markerEnd) markerEnd.setMap(null);
             
-            // 지도 중심 및 레벨 조정
+            // ... (이하 drawMapRoute 함수 내용은 이전 코드와 동일)
+            // 지도 마커 및 경로를 그리는 코드를 여기에 포함
+            
             const bounds = new kakao.maps.LatLngBounds();
             const startPos = new kakao.maps.LatLng(startCoords.y, startCoords.x);
             const endPos = new kakao.maps.LatLng(endCoords.y, endCoords.x);
@@ -236,7 +292,7 @@
             });
             routePolyline.setMap(map);
             
-            // CCTV 마커 표시 (cctvList의 좌표 형식에 맞게 수정 필요)
+            // CCTV 마커 표시 (UTIC 응답 형식에 맞게 lat/lon 필드명 확인 후 수정 필요)
             cctvList.forEach(cctv => {
                  // cctv.lat, cctv.lon 이 있다고 가정
                  if (cctv.lat && cctv.lon) {
@@ -245,7 +301,6 @@
                         position: cctvPos, 
                         map: map, 
                         title: cctv.cctvname || 'CCTV',
-                        // 빨간색 마커 아이콘 사용 (선택 사항)
                         image: new kakao.maps.MarkerImage(
                             'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png',
                             new kakao.maps.Size(24, 35),
@@ -253,19 +308,17 @@
                         )
                     });
                     
-                    // 마커 클릭 시 해당 CCTV가 화면에 보이면 강조 또는 이동
                     kakao.maps.event.addListener(cctvMarker, 'click', function() {
                         const targetElement = document.getElementById(`cctv-${cctv.cctvid}`);
                         if (targetElement) {
                             targetElement.scrollIntoView({ behavior: 'smooth' });
-                            targetElement.style.border = '3px solid red'; // 잠시 강조
-                            setTimeout(() => targetElement.style.border = 'none', 1500);
                         }
                     });
                  }
             });
 
             document.getElementById('cctv-count').textContent = `경로 주변 CCTV: ${cctvList.length}개 발견`;
+
         }
 
         /**
@@ -276,7 +329,6 @@
             const columnCount = document.getElementById('column-count').value;
             viewer.innerHTML = '';
             
-            // 컬럼 개수 클래스 업데이트
             viewer.className = `cols-${columnCount}`;
 
             if (cctvList.length === 0) {
@@ -285,23 +337,19 @@
             }
 
             cctvList.forEach(cctv => {
-                // UTIC API 응답에서 필요한 파라미터를 추출하여 기존 URL 형식에 맞게 재구성해야 합니다.
-                // UTIC API의 응답 필드를 확인하여 cctvid, cctvname, kind, cctvip, minX, minY 등을 추출해야 합니다.
-                
-                // 예시: API 응답 객체가 아래와 같은 필드를 가진다고 가정
+                // UTIC API 응답에서 cctvid, cctvname, cctvip 등 필수 파라미터를 추출해야 합니다.
+                // 아래는 UTIC 기존 URL 형식에 맞게 파라미터를 재구성한 예시입니다.
                 const params = `cctvid=${cctv.cctvid}&cctvname=${encodeURIComponent(cctv.cctvname)}&kind=${cctv.kind || 'EE'}&cctvip=${cctv.cctvip}&cctvch=${cctv.cctvch || 'undefined'}&id=undefined&cctvpasswd=undefined&cctvport=undefined&minX=${cctv.minX || ''}&minY=${cctv.minY || ''}&maxX=${cctv.maxX || ''}&maxY=${cctv.maxY || ''}`;
                 const fullUrl = UTIC_BASE_STREAM_URL + params;
 
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'cctv-item';
-                itemDiv.id = `cctv-${cctv.cctvid}`; // 마커 클릭 시 스크롤을 위한 ID 부여
+                itemDiv.id = `cctv-${cctv.cctvid}`;
 
-                // 제목 표시
                 const titleSpan = document.createElement('span');
                 titleSpan.className = 'cctv-title';
                 titleSpan.textContent = cctv.cctvname;
 
-                // iframe으로 CCTV 스트림 삽입
                 const iframe = document.createElement('iframe');
                 iframe.src = fullUrl;
                 iframe.setAttribute('loading', 'lazy'); 
@@ -313,17 +361,15 @@
             });
         }
         
-        // 컬럼 개수 변경 이벤트 리스너
         document.getElementById('column-count').addEventListener('change', () => {
-             // 뷰어가 이미 로드된 상태에서만 렌더링을 다시 합니다.
              const viewer = document.getElementById('cctv-viewer');
-             if (viewer.children.length > 1) { // 로딩 메시지 이상이 있다면
-                const currentClass = viewer.className.match(/cols-\d/)[0];
-                viewer.classList.remove(currentClass);
-                viewer.classList.add(`cols-${document.getElementById('column-count').value}`);
-             }
+             // 클래스 변경으로 CSS 레이아웃만 업데이트
+             viewer.className = `cols-${document.getElementById('column-count').value}`;
         });
-        
+
+        // 페이지 로드 시 API 키 입력 필드 초기화 및 서비스 로드 시도
+        document.addEventListener('DOMContentLoaded', initializeApiInputs);
+
     </script>
 </body>
 </html>
